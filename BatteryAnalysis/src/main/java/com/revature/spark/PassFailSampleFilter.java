@@ -3,15 +3,21 @@ package com.revature.spark;
 import java.util.List;
 
 import org.apache.spark.api.java.function.FilterFunction;
-import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 /*
+ * Code by: Sarah Faust
+ * 
  * This class filters the given dataset to only include batteries with a definitive pass/fail status.
- * The output will have batteries that:
- * 	A) Have a battery_status of 2
- * 	B) Have a battery_status of 1 AND feature a test_period of 3 or higher
- * 	C) Have a battery_status of 3 AND feature a test_period of 9 or higher
+ * These batteries and the patterns of their test results will be used to set the standard as to whether other batteries
+ * 		will pass or not based on how their test results compare.
+ * 
+ * The output will have:
+ * 	A) The first 3 test periods of batteries with a battery_status of 1
+ * 	B) The first 3 test periods of batteries with a battery_status of 2
+ * 	C) The first 3 test periods of batteries with a battery_status of 3 AND feature a test_period of 9 or higher
+ * 
+ * Note that entire rows are outputted, not just specific columns.
  */
 
 //for each row:
@@ -21,17 +27,15 @@ import org.apache.spark.sql.Row;
 //"_c#" refer to the column names- the default names provided by spark
 public class PassFailSampleFilter {
 	
-	//input:  table, 
-	public FilterResult execute(Dataset<Row> csv, String outputPath) {
+	//input:  the full table of data given to us (battery_test.csv), output file path
+	public void execute(Dataset<Row> csv, String outputPath) {
 		
 		
-		//Get a list of battery_ids that match the criteria
-		//String[] col = {"_c8"};
-		Dataset<Row> filteredCSV = csv.filter("_c9 = 1 OR (_c9 = 2 AND _c3 = 3) OR (_c9 = 3 AND (_c3 = 9 OR _c3 = 10))")
-				.drop("_c0", "_c1","_c2","_c3","_c4","_c5","_c6","_c7","_c9").dropDuplicates();
-		//		.dropDuplicates(col);
-		//filteredCSV.javaRDD();
+		//Get a list of battery_ids that match the criteria, and drop all columns except that which lists the battery IDs
+		Dataset<Row> filteredCSV = csv.filter("_c9 = 1 OR _c9 = 2 OR (_c9 = 3 AND (_c3 = 9 OR _c3 = 10))")
+				.drop("_c0", "_c1","_c2","_c3","_c4","_c5","_c6","_c7","_c9","_c10").dropDuplicates();
 		
+		//Convert the column of battery IDs to a list, and then convert that list to a string
 		List<Row> battery_IDs = filteredCSV.collectAsList();
 		StringBuilder listOfIDs = new StringBuilder("");
 		for(Row r:battery_IDs) {
@@ -39,15 +43,16 @@ public class PassFailSampleFilter {
 		}
 		String batteryList = listOfIDs.toString();
 		
-		StringBuilder wtf = new StringBuilder("");
+		//Then filter out all records of batteries whose ID isn't present within the string of approved battery IDs.
+		//Also only keep records covering the first three test periods of the approved battery IDs.
 		csv = csv.filter((FilterFunction<Row>)row -> {
-			return batteryList.contains(row.get(8).toString());
+			return (batteryList.contains(row.get(8).toString()) && (
+					Integer.parseInt(row.get(3).toString())==3 ||
+					Integer.parseInt(row.get(3).toString())==2 ||
+					Integer.parseInt(row.get(3).toString())==1
+					));
 		});
 		
-		//Column batteries = filteredCSV.col("_c8");
-		//batteries.toString();
-		csv.javaRDD().saveAsTextFile(outputPath);
-		
-		return new FilterResult(listOfIDs.toString());
+		//csv.javaRDD().saveAsTextFile(outputPath);
 	}
 }
